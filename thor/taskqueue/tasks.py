@@ -160,6 +160,8 @@ class Task:
                     relative_dir,
                     filename,
                 )
+                # Normalize any components like './' or '../'
+                blobpath = posixpath.normpath(blobpath)
                 logger.debug("uploading %s to %s", filepath, blobpath)
                 bucket.blob(blobpath).upload_from_filename(filepath)
 
