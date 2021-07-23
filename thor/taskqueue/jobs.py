@@ -249,7 +249,7 @@ def download_job_manifest(bucket: Bucket, job_id: str) -> JobManifest:
     JobManifest
     """
     path = f"thor_jobs/v1/job-{job_id}/manifest.json"
-    as_str = bucket.blob(path).download_as_string()
+    as_str = bucket.blob(path).download_as_text()
     return JobManifest.from_str(as_str)
 
 
