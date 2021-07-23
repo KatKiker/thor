@@ -215,7 +215,7 @@ def mark_task_done_in_manifest(
             manifest.update_time = datetime.datetime.now(datetime.timezone.utc)
 
             # Update the new version - as long as the generation hasn't changed.
-            bucket.blob(path).upload_from_text(
+            bucket.blob(path).upload_from_string(
                 manifest.to_str(), if_generation_match=generation,
             )
             logger.debug(f"updated manifest generation=%s", generation)
