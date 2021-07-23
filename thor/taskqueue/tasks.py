@@ -241,7 +241,7 @@ def download_task_inputs(
 
     obs_path = _job_input_path(task.job_id, "observations.csv")
     logger.info("downloading task input %s", obs_path)
-    obs_bytes = bucket.blob(obs_path).download_as_text()
+    obs_bytes = bucket.blob(obs_path).download_as_bytes()
     observations = pd.read_csv(
         io.BytesIO(obs_bytes),
         index_col=False,
