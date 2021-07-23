@@ -203,7 +203,7 @@ def mark_task_done_in_manifest(
             generation = old_manifest_blob.generation
             assert generation is not None
 
-            as_str = old_manifest_blob.download_as_string(
+            as_str = old_manifest_blob.download_as_text(
                 if_generation_match=generation,
             )
 
@@ -215,7 +215,7 @@ def mark_task_done_in_manifest(
             manifest.update_time = datetime.datetime.now(datetime.timezone.utc)
 
             # Update the new version - as long as the generation hasn't changed.
-            bucket.blob(path).upload_from_string(
+            bucket.blob(path).upload_from_text(
                 manifest.to_str(), if_generation_match=generation,
             )
             logger.debug(f"updated manifest generation=%s", generation)
