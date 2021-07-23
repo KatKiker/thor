@@ -108,6 +108,7 @@ write_files:
     After=gcr-online.target
 
     [Service]
+    Restart=always
     Environment="HOME=/home/thor-worker"
     ExecStartPre=/usr/bin/docker-credential-gcr configure-docker && \
         docker pull gcr.io/moeyens-thor-dev/thor-worker
