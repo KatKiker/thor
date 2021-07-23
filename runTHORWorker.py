@@ -107,7 +107,6 @@ def use_12_hour_heartbeat(connection, server_proposal):
     it takes a connection and server proposal, which it ignores.
     """
     return 12 * 60 * 60
->>>>>>> long_heartbeat
 
 
 if __name__ == "__main__":
