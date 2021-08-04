@@ -3,6 +3,8 @@ import os
 
 import pika
 from google.cloud.storage.client import Client as GCSClient
+from google.cloud.pubsub_v1 import PublisherClient as PubsubClient
+from google.cloud.secretmanager_v1 import SecretManagerServiceClient
 
 
 def parse_args():
@@ -33,6 +35,11 @@ def parse_args():
         help="password to connect with to the rabbit broker",
     )
     parser.add_argument(
+        "--rabbit-password-from-secret-manager",
+        action="store_true",
+        help="load rabbit password from google secret manager",
+    )
+    parser.add_argument(
         "--poll-interval",
         type=float,
         default=5.0,
@@ -48,7 +55,13 @@ def parse_args():
     )
     args = parser.parse_args()
     if args.rabbit_password == "$RABBIT_PASSWORD env var":
-        args.rabbit_password = os.environ["RABBIT_PASSWORD"]
+        args.rabbit_password = os.environ.get("RABBIT_PASSWORD")
+    if args.rabbit_password is None and args.rabbit_password_from_secret_manager:
+        client = SecretManagerServiceClient()
+        response = client.access_secret_version(
+            name="projects/moeyens-thor-dev/secrets/rabbitmq-password/versions/latest"
+        )
+        args.rabbit_password = response.payload.data.decode("utf8")
     return args
 
 
@@ -71,13 +84,41 @@ def main():
             credentials=pika.PlainCredentials(
                 username=args.rabbit_username, password=args.rabbit_password,
             ),
+            heartbeat=use_12_hour_heartbeat,
         ),
         args.queue,
     )
     queue.connect()
-    gcs = GCSClient()
-    worker = Worker(gcs, queue)
-    worker.run_worker_loop(args.poll_interval, args.idle_shutdown_timeout)
+    try:
+        gcs = GCSClient()
+        pubsub = PubsubClient()
+        worker = Worker(gcs, pubsub, queue)
+        worker.run_worker_loop(args.poll_interval, args.idle_shutdown_timeout)
+    finally:
+        queue.close()
+
+
+def use_12_hour_heartbeat(connection, server_proposal):
+    """
+    Configures a Rabbit connection to use a 12-hour heartbeat interval.
+
+    If a task takes longer than the heartbeat interval, then the rabbit server
+    will kill the connection, since the worker doesn't use a background thread
+    to acknowledge heartbeats - it just runs THOR until complete.
+
+    The default is 60s, which is much too low - THOR tasks that are longer would
+    always result in inability to communicate with Rabbit.
+
+    We could disable heartbeats entirely, but then the Rabbit server would hold
+    lots of broken TCP connections whenever workers exit.
+
+    12 hours is longer than tasks should take, but still finite, so the server
+    won't build up garbage.
+
+    This function conforms to Pika's API for setting a heartbeat, which is why
+    it takes a connection and server proposal, which it ignores.
+    """
+    return 12 * 60 * 60
 
 
 if __name__ == "__main__":

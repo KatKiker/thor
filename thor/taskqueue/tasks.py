@@ -145,66 +145,6 @@ class Task:
 
         return download_task_inputs(bucket, self)
 
-    def mark_in_progress(self, bucket: Bucket):
-        """Mark the task as in-progress, handled by the current process.
-
-        Parameters
-        ----------
-        bucket : Bucket
-            The bucket hosting the job.
-        """
-
-        set_task_status(bucket, self.job_id, self.task_id, TaskState.IN_PROGRESS)
-
-    def mark_success(self, bucket: Bucket, result_directory: str):
-        """
-        Mark the task as succesfully completed, handled by the current process, and
-        upload its results.
-
-        Parameters
-        ----------
-        bucket : Bucket
-            The bucket hosting the job.
-        result_directory : str
-            A local directory holding all the results of the execution which
-            should be uploaded to the bucket.
-        """
-
-        logger.info("marking task %s as a success", self.task_id)
-        # Store the results for the publisher
-        self._upload_results(bucket, result_directory)
-        # Mark the message as successfully handled
-        self._channel.basic_ack(delivery_tag=self._delivery_tag)
-        set_task_status(bucket, self.job_id, self.task_id, TaskState.SUCCEEDED)
-
-    def mark_failure(self, bucket: Bucket, result_directory: str, exception: Exception):
-        """Mark the task as having failed.
-
-        The task's status is updated in the bucket. Any intermediate results in
-        result_directory are uploaded to the bucket, as well as an error trace.
-
-        Parameters
-        ----------
-        bucket : Bucket
-            The bucket hosting the job.
-        result_directory : str
-            A local directory holding all the results of the execution.
-        exception : Exception
-            The exception that triggered the failure.
-        """
-
-        logger.error(
-            "marking task %s as a failure, reason: %s", self.task_id, exception
-        )
-        # store the failed results
-        self._upload_failure(bucket, result_directory, exception)
-        # Mark the message as unsuccessfully attempted
-        self._channel.basic_nack(
-            delivery_tag=self._delivery_tag,
-            requeue=False,
-        )
-        set_task_status(bucket, self.job_id, self.task_id, TaskState.FAILED)
-
     def _upload_results(self, bucket: Bucket, result_directory: str):
         # Task-wide directory in the bucket where results go
         output_blobdir = _task_output_path(self.job_id, self.task_id)
@@ -220,6 +160,8 @@ class Task:
                     relative_dir,
                     filename,
                 )
+                # Normalize any components like './' or '../'
+                blobpath = posixpath.normpath(blobpath)
                 logger.debug("uploading %s to %s", filepath, blobpath)
                 bucket.blob(blobpath).upload_from_filename(filepath)
 
@@ -227,17 +169,22 @@ class Task:
         self, bucket: Bucket, result_directory: str, exception: Exception
     ):
         output_blobdir = _task_output_path(self.job_id, self.task_id)
-        exception_string = traceback.format_exception(
+        exception_strings = traceback.format_exception(
             etype=type(exception),
             value=exception,
             tb=exception.__traceback__,
         )
+        if len(exception_strings) == 1:
+            exception_string = exception_strings[0]
+        else:
+            exception_string = "Multiple errors:\n"
+            for i, e in enumerate(exception_strings):
+                exception_string += f"begin-exception-{i}:\n{e}\nend-exception-{i}"
+
         blobpath = posixpath.join(output_blobdir, "error_message.txt")
         logger.error("uploading exception trace to %s", blobpath)
         bucket.blob(blobpath).upload_from_string(exception_string)
         self._upload_results(self.bucket, result_directory)
-
-        raise NotImplementedError()
 
 
 # Generated randomly:
@@ -289,12 +236,12 @@ def download_task_inputs(
 
     cfg_path = _job_input_path(task.job_id, "config.yml")
     logger.info("downloading task input %s", cfg_path)
-    cfg_bytes = bucket.blob(cfg_path).download_as_string()
+    cfg_bytes = bucket.blob(cfg_path).download_as_bytes()
     config = Configuration().fromYamlString(cfg_bytes.decode("utf8"))
 
     obs_path = _job_input_path(task.job_id, "observations.csv")
     logger.info("downloading task input %s", obs_path)
-    obs_bytes = bucket.blob(obs_path).download_as_string()
+    obs_bytes = bucket.blob(obs_path).download_as_bytes()
     observations = pd.read_csv(
         io.BytesIO(obs_bytes),
         index_col=False,
@@ -303,7 +250,7 @@ def download_task_inputs(
 
     orbit_path = _task_input_path(task.job_id, task.task_id, "orbit.csv")
     logger.info("downloading task input %s", orbit_path)
-    orbit_bytes = bucket.blob(orbit_path).download_as_string()
+    orbit_bytes = bucket.blob(orbit_path).download_as_bytes()
     orbit = Orbits.from_csv(io.BytesIO(orbit_bytes))
 
     return (config, observations, orbit)
@@ -580,7 +527,7 @@ def get_task_status(bucket: Bucket, job_id: str, task_id: str) -> TaskStatus:
     """
 
     blob_path = _task_status_path(job_id, task_id)
-    status_str = bucket.blob(blob_path).download_as_string()
+    status_str = bucket.blob(blob_path).download_as_bytes()
     return TaskStatus.from_bytes(status_str)
 
 
