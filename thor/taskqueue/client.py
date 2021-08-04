@@ -63,6 +63,7 @@ class Client:
         config: Configuration,
         observations: pd.DataFrame,
         orbits: Orbits,
+        job_id: str,
         job_completion_pubsub_topic: Optional[str] = None,
     ) -> JobManifest:
         """
@@ -80,6 +81,8 @@ class Client:
             thor.main.runTHOR.
         orbits : Orbits
             The test orbits to be used by task executors.
+        job_id : str
+            The job uid created by the API.
         job_completion_pubsub_topic : Optional[str]
             The name of a pubsub topic (in the canonical
             projects/{project}/topics/{topic} format) which should get an
