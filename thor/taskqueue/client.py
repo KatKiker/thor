@@ -96,7 +96,6 @@ class Client:
         """
         logger.info("launching new job")
 
-        job_id = str(uuid.uuid1())
         logger.info("generated job ID: %s", job_id)
 
         logger.info("uploading job inputs")

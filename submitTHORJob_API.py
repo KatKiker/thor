@@ -186,8 +186,6 @@ def main():
         job_id=args.uid,
         job_completion_pubsub_topic=args.pubsub_topic,
     )
-    taskqueue_client.monitor_job_status(manifest.job_id)
-    taskqueue_client.download_results(manifest, args.out_dir)
 
 
 if __name__ == "__main__":
